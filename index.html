@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日作業與訂正登記表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fefce8; /* 柔和鵝黃色背景 */
+            color: #1e293b;
+        }
+        .top-bar-text {
+            font-size: 16px !important;
+            line-height: 1.2 !important;
+        }
+        /* 按鈕基本樣式 */
+        .btn-status-0 { background-color: #e2e8f0; color: #475569; } /* ⚪ 未繳 (灰色) */
+        .btn-status-1 { background-color: #fde047; color: #713f12; } /* 🟡 需訂正 (黃色) */
+        .btn-status-2 { background-color: #ef4444; color: #ffffff; } /* 🔴 缺交 (紅色) */
+        .btn-status-3 { background-color: #22c55e; color: #ffffff; } /* 🟢 已完成 (綠色) */
+    </style>
+</head>
+<body class="bg-amber-50 min-h-screen flex flex-col p-2 sm:p-4">
+
+    <!-- 頂部列 (16px) -->
+    <header class="bg-white/80 backdrop-blur rounded-xl p-3 shadow-sm mb-3 flex flex-wrap justify-between items-center top-bar-text border border-amber-200">
+        <div class="flex items-center space-x-2 font-bold text-amber-900">
+            <i class="fa-solid me-1 fa-clipboard-check text-amber-600"></i>
+            <span>每日作業與訂正登記表</span>
+        </div>
+        <div class="flex items-center space-x-3 text-xs sm:text-sm">
+            <span id="sync-status" class="flex items-center text-emerald-600 font-medium">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block mr-1.5"></span>
+                <span id="sync-text">連線處理中...</span>
+            </span>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto w-full space-y-3 flex-1 flex flex-col">
+
+        <!-- 控制工具與班級人數區塊 (12px 專用區) -->
+        <section class="bg-white rounded-xl p-3 shadow-sm border border-amber-200 flex flex-wrap justify-between items-center gap-2">
+            <!-- 全班人數調整區 -->
+            <div class="flex items-center space-x-2 text-[12px] text-slate-700 font-medium">
+                <i class="fa-solid fa-users text-amber-600 text-[12px]"></i>
+                <label for="student-count-input" class="text-[12px]">全班人數：</label>
+                <input type="number" id="student-count-input" min="1" max="60" value="30"
+                    onchange="window.updateStudentCount(this.value)"
+                    class="w-14 border border-amber-300 rounded px-1.5 py-0.5 text-center text-[12px] focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/50">
+                <span class="text-[12px]">人</span>
+            </div>
+
+            <!-- 批量動作按鈕 (12px) -->
+            <div class="flex items-center gap-2">
+                <button onclick="window.setAllStatus(3)" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded-lg font-medium text-[12px] transition flex items-center space-x-1">
+                    <i class="fa-solid fa-check-double text-[12px]"></i>
+                    <span>全設為已完成 🟢</span>
+                </button>
+                <button onclick="window.resetCurrentTask()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-lg font-medium text-[12px] transition flex items-center space-x-1">
+                    <i class="fa-solid fa-rotate-left text-[12px]"></i>
+                    <span>重置目前作業 ⚪</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 作業項目選單列 -->
+        <section class="bg-white rounded-xl p-3 shadow-sm border border-amber-200 space-y-2">
+            <div class="flex justify-between items-center mb-1">
+                <h2 class="text-sm font-bold text-slate-700 flex items-center">
+                    <i class="fa-solid fa-book-open text-amber-600 me-1.5"></i>登記項目
+                </h2>
+                <button onclick="window.openAddTaskModal()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2.5 py-1 rounded-lg font-medium shadow-sm transition flex items-center space-x-1">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>新增作業</span>
+                </button>
+            </div>
+            
+            <!-- 作業分頁按鈕牆 -->
+            <div id="task-tabs" class="flex flex-wrap gap-1.5">
+                <!-- 動態載入作業分頁 -->
+            </div>
+        </section>
+
+        <!-- 學生號碼號碼牌點選區 (10欄緊湊排列) -->
+        <section class="bg-white rounded-xl p-3 shadow-sm border border-amber-200 flex-1 flex flex-col">
+            <div class="flex justify-between items-center mb-2">
+                <h3 id="current-task-name" class="text-base font-bold text-amber-900">目前項目</h3>
+                <div class="flex items-center space-x-2 text-xs text-slate-500">
+                    <span>點擊循環切換：</span>
+                    <span class="px-1.5 py-0.5 rounded btn-status-0">⚪未繳</span>
+                    <span class="px-1.5 py-0.5 rounded btn-status-1">🟡訂正</span>
+                    <span class="px-1.5 py-0.5 rounded btn-status-2">🔴缺交</span>
+                    <span class="px-1.5 py-0.5 rounded btn-status-3">🟢完成</span>
+                </div>
+            </div>
+
+            <!-- 學生號碼網格 (簡化緊湊行距) -->
+            <div id="student-grid" class="grid grid-cols-5 sm:grid-cols-10 gap-1.5 py-1">
+                <!-- 動態產生號碼按鈕 -->
+            </div>
+
+            <!-- 底部統計與複製功能 -->
+            <div class="mt-auto pt-3 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 text-xs">
+                <div id="stats-summary" class="flex flex-wrap gap-2 text-slate-600 font-medium">
+                    <!-- 動態計算人數 -->
+                </div>
+                <button onclick="window.copyUnfinishedList()" class="bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5 border border-amber-300">
+                    <i class="fa-regular fa-copy"></i>
+                    <span>複製未完成名單</span>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- 新增作業對話框 Modal -->
+    <div id="add-task-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-sm shadow-xl border border-amber-200">
+            <h3 class="text-lg font-bold text-amber-900 mb-3 flex items-center">
+                <i class="fa-solid fa-file-circle-plus text-amber-600 me-2"></i>新增作業 / 項目
+            </h3>
+            <input type="text" id="new-task-name-input" placeholder="例如：國本 (一)、數學考卷..." 
+                class="w-full border border-amber-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4">
+            <div class="flex justify-end space-x-2 text-xs font-bold">
+                <button onclick="window.closeAddTaskModal()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">取消</button>
+                <button onclick="window.confirmAddTask()" class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition">確定新增</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部提示訊息 Toast -->
+    <div id="toast-message" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800/90 text-white text-xs sm:text-sm px-4 py-2.5 rounded-full shadow-lg transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center space-x-2">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-text">提示內容</span>
+    </div>
+
+    <!-- Firebase 模組腳本 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // 全域狀態
+        let state = {
+            studentCount: 30,
+            currentTaskIndex: 0,
+            tasks: [
+                { id: '1', name: '國語作業', statuses: Array(30).fill(0) },
+                { id: '2', name: '數學考卷', statuses: Array(30).fill(0) }
+            ]
+        };
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-app",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "123456",
+            appId: "1:123456:web:123456"
+        };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hw-tracker-demo';
+        const DEFAULT_ROOM_ID = 'default-class';
+
+        let app = initializeApp(firebaseConfig);
+        let auth = getAuth(app);
+        let db = getFirestore(app);
+        let currentUser = null;
+        let authPromise = null;
+        let unsubscribeRoom = null;
+
+        // 驗證並調整作業狀態陣列長度
+        function ensureTaskStructure() {
+            if (!state.tasks) state.tasks = [];
+            state.tasks.forEach(task => {
+                if (!task.statuses) task.statuses = Array(state.studentCount).fill(0);
+                if (task.statuses.length < state.studentCount) {
+                    const diff = state.studentCount - task.statuses.length;
+                    task.statuses = [...task.statuses, ...Array(diff).fill(0)];
+                } else if (task.statuses.length > state.studentCount) {
+                    task.statuses = task.statuses.slice(0, state.studentCount);
+                }
+            });
+            if (state.currentTaskIndex >= state.tasks.length) {
+                state.currentTaskIndex = Math.max(0, state.tasks.length - 1);
+            }
+        }
+
+        // 存檔 (Firestore & LocalStorage 雙備份)
+        async function saveState() {
+            localStorage.setItem('hw_tracker_state', JSON.stringify(state));
+            if (currentUser && db) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', DEFAULT_ROOM_ID);
+                    await setDoc(docRef, { state: state, updatedAt: Date.now() }, { merge: true });
+                } catch (e) {
+                    console.warn("Firestore sync warning:", e);
+                }
+            }
+        }
+
+        // 渲染 UI 畫面
+        function render() {
+            ensureTaskStructure();
+
+            // 人數輸入框
+            const countInput = document.getElementById('student-count-input');
+            if (countInput && parseInt(countInput.value, 10) !== state.studentCount) {
+                countInput.value = state.studentCount;
+            }
+
+            // 作業分頁
+            const taskTabs = document.getElementById('task-tabs');
+            if (taskTabs) {
+                taskTabs.innerHTML = state.tasks.map((task, idx) => {
+                    const isActive = idx === state.currentTaskIndex;
+                    return `
+                        <div class="flex items-center rounded-lg border text-xs font-bold transition ${
+                            isActive 
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-sm' 
+                            : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                        }">
+                            <button onclick="window.switchTask(${idx})" class="px-2.5 py-1.5 flex items-center space-x-1">
+                                <span>${task.name}</span>
+                            </button>
+                            ${state.tasks.length > 1 ? `
+                                <button onclick="window.deleteTask(${idx})" class="pr-2 pl-0.5 py-1.5 opacity-70 hover:opacity-100 transition">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // 當前作業名稱與網格號碼
+            const currentTask = state.tasks[state.currentTaskIndex];
+            const currentTaskNameEl = document.getElementById('current-task-name');
+            if (currentTaskNameEl) {
+                currentTaskNameEl.textContent = currentTask ? currentTask.name : '尚未選擇項目';
+            }
+
+            const gridEl = document.getElementById('student-grid');
+            if (gridEl && currentTask) {
+                gridEl.innerHTML = currentTask.statuses.map((status, idx) => {
+                    const seatNum = idx + 1;
+                    return `
+                        <button onclick="window.toggleStatus(${idx})" 
+                            class="btn-status-${status} h-11 rounded-lg font-bold text-[30px] flex items-center justify-center shadow-sm transition active:scale-95 border border-black/5">
+                            ${seatNum}
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            // 統計人數計算
+            const statsSummaryEl = document.getElementById('stats-summary');
+            if (statsSummaryEl && currentTask) {
+                let counts = [0, 0, 0, 0]; // 0:未繳, 1:需訂正, 2:缺交, 3:完成
+                currentTask.statuses.forEach(s => counts[s]++);
+                statsSummaryEl.innerHTML = `
+                    <span class="text-slate-500">⚪ 未繳: <b>${counts[0]}</b> 人</span>
+                    <span class="text-amber-600">🟡 需訂正: <b>${counts[1]}</b> 人</span>
+                    <span class="text-red-600">🔴 缺交: <b>${counts[2]}</b> 人</span>
+                    <span class="text-emerald-600">🟢 完成: <b>${counts[3]}</b> 人</span>
+                `;
+            }
+        }
+
+        // 全域導出函式供 HTML onclick 使用
+        window.toggleStatus = function(index) {
+            if (!state.tasks || state.tasks.length === 0) return;
+            const currentTask = state.tasks[state.currentTaskIndex];
+            if (!currentTask) return;
+            currentTask.statuses[index] = (currentTask.statuses[index] + 1) % 4;
+            saveState();
+            render();
+        };
+
+        window.setAllStatus = function(status) {
+            if (!state.tasks || state.tasks.length === 0) return;
+            const currentTask = state.tasks[state.currentTaskIndex];
+            if (!currentTask) return;
+            currentTask.statuses = currentTask.statuses.map(() => status);
+            saveState();
+            render();
+        };
+
+        window.resetCurrentTask = function() {
+            window.setAllStatus(0);
+        };
+
+        window.updateStudentCount = function(count) {
+            const num = parseInt(count, 10);
+            if (isNaN(num) || num < 1) return;
+            state.studentCount = num;
+            ensureTaskStructure();
+            saveState();
+            render();
+        };
+
+        window.switchTask = function(index) {
+            state.currentTaskIndex = index;
+            render();
+        };
+
+        window.openAddTaskModal = function() {
+            const modal = document.getElementById('add-task-modal');
+            const input = document.getElementById('new-task-name-input');
+            if (modal && input) {
+                input.value = '';
+                modal.classList.remove('hidden');
+                setTimeout(() => input.focus(), 100);
+            }
+        };
+
+        window.closeAddTaskModal = function() {
+            const modal = document.getElementById('add-task-modal');
+            if (modal) modal.classList.add('hidden');
+        };
+
+        window.confirmAddTask = function() {
+            const input = document.getElementById('new-task-name-input');
+            const name = input ? input.value.trim() : '';
+            if (!name) return;
+
+            state.tasks.push({
+                id: Date.now().toString(),
+                name: name,
+                statuses: Array(state.studentCount).fill(0)
+            });
+            state.currentTaskIndex = state.tasks.length - 1;
+            window.closeAddTaskModal();
+            saveState();
+            render();
+        };
+
+        window.deleteTask = function(index) {
+            if (state.tasks.length <= 1) return;
+            state.tasks.splice(index, 1);
+            if (state.currentTaskIndex >= state.tasks.length) {
+                state.currentTaskIndex = state.tasks.length - 1;
+            }
+            saveState();
+            render();
+        };
+
+        window.copyUnfinishedList = function() {
+            const currentTask = state.tasks[state.currentTaskIndex];
+            if (!currentTask) return;
+
+            let needFix = [];
+            let missing = [];
+            let unsubmitted = [];
+
+            currentTask.statuses.forEach((status, idx) => {
+                const seat = idx + 1;
+                if (status === 1) needFix.push(seat);
+                else if (status === 2) missing.push(seat);
+                else if (status === 0) unsubmitted.push(seat);
+            });
+
+            let text = `【${currentTask.name} 登記結果】\n`;
+            if (needFix.length > 0) text += `🟡 需訂正 (${needFix.length}人): ${needFix.join(', ')}\n`;
+            if (missing.length > 0) text += `🔴 缺交 (${missing.length}人): ${missing.join(', ')}\n`;
+            if (unsubmitted.length > 0) text += `⚪ 未繳/未登記 (${unsubmitted.length}人): ${unsubmitted.join(', ')}\n`;
+            if (needFix.length === 0 && missing.length === 0 && unsubmitted.length === 0) {
+                text += `🎉 全班皆已完成！`;
+            }
+
+            // 複製至剪貼簿
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            // 顯示 Toast 彈窗
+            window.showToast("已複製未完成名單至剪貼簿！");
+        };
+
+        window.showToast = function(msg) {
+            const toast = document.getElementById('toast-message');
+            const toastText = document.getElementById('toast-text');
+            if (toast && toastText) {
+                toastText.textContent = msg;
+                toast.classList.remove('opacity-0', 'pointer-events-none');
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'pointer-events-none');
+                }, 2000);
+            }
+        };
+
+        // Firebase 自動認證與即時同步
+        authPromise = (async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                    currentUser = userCredential.user;
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    currentUser = userCredential.user;
+                }
+            } catch (err) {
+                console.warn("Firebase Auth fallback to local mode:", err);
+            }
+        })();
+
+        window.addEventListener('load', async () => {
+            // 先載入本地備份
+            const savedState = localStorage.getItem('hw_tracker_state');
+            if (savedState) {
+                try {
+                    state = JSON.parse(savedState);
+                    ensureTaskStructure();
+                } catch (e) {
+                    console.error("Local load error", e);
+                }
+            }
+            render();
+
+            // 設定連線狀態顯示
+            const syncText = document.getElementById('sync-text');
+            if (syncText) syncText.textContent = "即時連動中";
+
+            // 綁定遠端 Firestore
+            if (authPromise) await authPromise;
+            if (currentUser && db) {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', DEFAULT_ROOM_ID);
+                unsubscribeRoom = onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data && data.state) {
+                            state = data.state;
+                            ensureTaskStructure();
+                            render();
+                        }
+                    }
+                }, (error) => {
+                    console.warn("Firestore snapshot error:", error);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
